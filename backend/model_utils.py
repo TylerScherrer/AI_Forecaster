@@ -86,24 +86,45 @@ def build_feature_vector_for_store(store_id: int) -> pd.DataFrame:
 
 def get_store_list_from_features():
     """
-    Build a store list purely from features_latest_per_store_v3.pkl.
-    Returns a DataFrame with:
-      - store_id
-      - store_label  (e.g. 'Store #4023')
+    Build a store list from features_latest_per_store_v3.pkl
+    and attach real store_name when we have it.
     """
-    df = get_latest_features_df()
+    latest = get_latest_features_df()
 
     stores = (
-        df[["Store Number"]]
+        latest[["Store Number"]]
         .drop_duplicates()
         .rename(columns={"Store Number": "store_id"})
         .sort_values("store_id")
         .reset_index(drop=True)
     )
 
-    # Simple human-readable label; we can swap in real names later if we want
-    stores["store_label"] = stores["store_id"].apply(
-        lambda s: f"Store #{int(s)}"
+    # join with lookup to get store_name
+    lookup = get_store_lookup()  # has store_id, store_name
+    stores = stores.merge(lookup, on="store_id", how="left")
+
+    # Fallback label if name missing
+    stores["store_label"] = stores["store_name"].fillna(
+        stores["store_id"].apply(lambda s: f"Store #{int(s)}")
     )
 
     return stores
+
+
+DATA_DIR = os.path.join(BASE_DIR, "data")
+STORE_LOOKUP_PATH = os.path.join(DATA_DIR, "store_lookup.csv")
+
+_store_lookup_cache = None
+
+def get_store_lookup():
+    """
+    Load and cache store_lookup.csv:
+      columns: store_id, store_name
+    """
+    global _store_lookup_cache
+    if _store_lookup_cache is not None:
+        return _store_lookup_cache
+
+    df = pd.read_csv(STORE_LOOKUP_PATH)
+    _store_lookup_cache = df
+    return _store_lookup_cache

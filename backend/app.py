@@ -35,9 +35,6 @@ IOWA_CSV_PATH = os.path.join(DATA_DIR, "Iowa_Liquor_Sales.csv")
 _store_list_cache = None
 
 def get_store_list():
-    """
-    Build and cache the store list from features_latest_per_store_v3.pkl.
-    """
     global _store_list_cache
     if _store_list_cache is not None:
         return _store_list_cache
@@ -48,13 +45,13 @@ def get_store_list():
 
 
 
+
 # ---------------------------------------------------------
 # Routes
 # ---------------------------------------------------------
 @app.get("/api/health")
 def health():
     return {"ok": True}
-
 
 @app.get("/api/stores")
 def api_get_stores():
@@ -67,6 +64,7 @@ def api_get_stores():
         return jsonify({"stores": stores})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 
