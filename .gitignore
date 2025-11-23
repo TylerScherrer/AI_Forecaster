@@ -1,0 +1,20 @@
+# Python virtualenvs
+.venv/
+backend/.venv/
+
+# Node modules
+frontend/node_modules/
+
+# Large data files
+backend/data/Iowa_Liquor_Sales.csv
+backend/data/*.csv
+
+# Trained models / artifacts (optional)
+backend/models/*.pkl
+
+# Python cache
+**/__pycache__/
+*.pyc
+
+# Env files
+*.env
