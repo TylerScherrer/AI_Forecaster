@@ -1,9 +1,16 @@
+// src/App.jsx
 import { useEffect, useState } from "react";
 
-const API_BASE = import.meta.env.VITE_API_URL;
+import { apiHealth, apiGetStores, apiGetForecast } from "./api/client";
+import StatusBar from "./components/StatusBar";
+import ErrorBox from "./components/ErrorBox";
+import StoreList from "./components/StoreList";
+import ForecastPanel from "./components/ForecastPanel";
+
+import "./App.css";
 
 export default function App() {
-  const [status, setStatus] = useState("Loading...");
+  const [status, setStatus] = useState("Checking backend…");
   const [error, setError] = useState("");
   const [stores, setStores] = useState([]);
   const [selectedStore, setSelectedStore] = useState(null);
@@ -14,9 +21,7 @@ export default function App() {
   useEffect(() => {
     async function checkBackend() {
       try {
-        const res = await fetch(`${API_BASE}/health`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await apiHealth();
         setStatus(data.ok ? "Backend is connected" : "Unexpected response");
       } catch (err) {
         setError(String(err));
@@ -30,10 +35,8 @@ export default function App() {
   useEffect(() => {
     async function loadStores() {
       try {
-        const res = await fetch(`${API_BASE}/stores`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setStores(Array.isArray(data.stores) ? data.stores : []);
+        const storesData = await apiGetStores();
+        setStores(storesData);
       } catch (err) {
         setError(String(err));
       }
@@ -41,7 +44,7 @@ export default function App() {
     loadStores();
   }, []);
 
-  // When user clicks a store
+  // Handle store click
   async function handleSelectStore(store) {
     setSelectedStore(store);
     setPrediction(null);
@@ -49,9 +52,7 @@ export default function App() {
     setError("");
 
     try {
-      const res = await fetch(`${API_BASE}/forecast/${store.value}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await apiGetForecast(store.value);
       setPrediction(data.prediction);
     } catch (err) {
       setError(String(err));
@@ -61,109 +62,34 @@ export default function App() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "flex-start",
-        fontFamily: "system-ui, sans-serif",
-        padding: 24,
-      }}
-    >
-      <h1>AI Forecaster</h1>
-      <p>{status}</p>
-
-      {error && (
-        <pre
-          style={{
-            color: "crimson",
-            background: "#111",
-            padding: 12,
-            borderRadius: 8,
-            maxWidth: 600,
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {error}
-        </pre>
-      )}
-
-      <div
-        style={{
-          display: "flex",
-          gap: 24,
-          marginTop: 24,
-          width: "100%",
-          maxWidth: 900,
-        }}
-      >
-        {/* Store list */}
-        <div style={{ flex: 1 }}>
-          <h3>Stores (click one)</h3>
-          <ul
-            style={{
-              listStyle: "none",
-              padding: 0,
-              margin: 0,
-              maxHeight: 400,
-              overflowY: "auto",
-              border: "1px solid #ccc",
-              borderRadius: 8,
-            }}
-          >
-            {stores.map((s) => (
-              <li
-                key={s.value}
-                onClick={() => handleSelectStore(s)}
-                style={{
-                  padding: "8px 12px",
-                  cursor: "pointer",
-                  background:
-                    selectedStore && selectedStore.value === s.value
-                      ? "#eef"
-                      : "white",
-                  borderBottom: "1px solid #eee",
-                }}
-              >
-                {s.label} (#{s.value})
-              </li>
-            ))}
-            {stores.length === 0 && <li style={{ padding: 8 }}>No stores loaded.</li>}
-          </ul>
+    <div className="app-root">
+      <header className="app-header">
+        <div>
+          <h1 className="app-title">AI Forecaster</h1>
+          <p className="app-subtitle">
+            Simple store-level forecasts for busy managers.
+          </p>
         </div>
+        <StatusBar status={status} />
+      </header>
 
-        {/* Prediction panel */}
-        <div style={{ flexBasis: 280 }}>
-          <h3>Forecast</h3>
-          {!selectedStore && <p>Select a store to see a prediction.</p>}
+      <main className="app-main">
+        <ErrorBox error={error} />
 
-          {selectedStore && (
-            <div
-              style={{
-                border: "1px solid #ccc",
-                borderRadius: 8,
-                padding: 16,
-              }}
-            >
-              <p>
-                <strong>Store:</strong> {selectedStore.label} (#{selectedStore.value})
-              </p>
-              {loadingForecast && <p>Loading prediction...</p>}
-              {!loadingForecast && prediction != null && (
-                <p>
-                  <strong>Predicted value:</strong>{" "}
-                  {prediction.toFixed ? prediction.toFixed(2) : prediction}
-                </p>
-              )}
-              {!loadingForecast && prediction == null && (
-                <p>No prediction available yet.</p>
-              )}
-            </div>
-          )}
+        <div className="layout-grid">
+          <StoreList
+            stores={stores}
+            selectedStore={selectedStore}
+            onSelectStore={handleSelectStore}
+          />
+
+          <ForecastPanel
+            selectedStore={selectedStore}
+            prediction={prediction}
+            loadingForecast={loadingForecast}
+          />
         </div>
-      </div>
+      </main>
     </div>
   );
 }
