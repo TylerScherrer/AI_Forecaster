@@ -83,3 +83,27 @@ def build_feature_vector_for_store(store_id: int) -> pd.DataFrame:
     # Keep only the columns the model was trained on, in the right order
     X = row[feature_names].copy()
     return X
+
+def get_store_list_from_features():
+    """
+    Build a store list purely from features_latest_per_store_v3.pkl.
+    Returns a DataFrame with:
+      - store_id
+      - store_label  (e.g. 'Store #4023')
+    """
+    df = get_latest_features_df()
+
+    stores = (
+        df[["Store Number"]]
+        .drop_duplicates()
+        .rename(columns={"Store Number": "store_id"})
+        .sort_values("store_id")
+        .reset_index(drop=True)
+    )
+
+    # Simple human-readable label; we can swap in real names later if we want
+    stores["store_label"] = stores["store_id"].apply(
+        lambda s: f"Store #{int(s)}"
+    )
+
+    return stores

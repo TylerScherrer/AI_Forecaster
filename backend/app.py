@@ -3,10 +3,12 @@ from flask_cors import CORS
 import os
 import pandas as pd
 
+
 from model_utils import (
     get_model,
     build_feature_vector_for_store,
-    get_latest_features_df,
+    get_latest_features_df,      # you already had this
+    get_store_list_from_features # new helper
 )
 
 # ---------------------------------------------------------
@@ -32,49 +34,18 @@ IOWA_CSV_PATH = os.path.join(DATA_DIR, "Iowa_Liquor_Sales.csv")
 
 _store_list_cache = None
 
-
-def get_store_list() -> pd.DataFrame:
+def get_store_list():
     """
-    Build and cache the store list as a DataFrame with:
-      - store_id
-      - store_name
-
-    Steps:
-    1) Read Store Number + Store Name from the raw CSV.
-    2) Drop duplicates.
-    3) Filter to stores that actually have a latest feature row
-       in features_latest_per_store_v3.pkl.
+    Build and cache the store list from features_latest_per_store_v3.pkl.
     """
-
     global _store_list_cache
     if _store_list_cache is not None:
         return _store_list_cache
 
-    # 1) Load base store info from CSV
-    df = pd.read_csv(
-        IOWA_CSV_PATH,
-        usecols=["Store Number", "Store Name"],
-    ).dropna()
-
-    df = df.drop_duplicates(subset="Store Number")
-
-    df = df.rename(
-        columns={
-            "Store Number": "store_id",
-            "Store Name": "store_name",
-        }
-    )
-
-    # 2) Only keep stores that have a feature row
-    latest_df = get_latest_features_df()
-    valid_ids = set(latest_df["Store Number"].unique())
-    df = df[df["store_id"].isin(valid_ids)]
-
-    # 3) Sort for nicer UI ordering
-    df = df.sort_values("store_name").reset_index(drop=True)
-
+    df = get_store_list_from_features()
     _store_list_cache = df
     return _store_list_cache
+
 
 
 # ---------------------------------------------------------
@@ -87,19 +58,16 @@ def health():
 
 @app.get("/api/stores")
 def api_get_stores():
-    """
-    Return all available stores as:
-      { value: store_id, label: store_name }
-    """
     try:
         df = get_store_list()
         stores = [
-            {"value": int(row["store_id"]), "label": row["store_name"]}
+            {"value": int(row["store_id"]), "label": row["store_label"]}
             for _, row in df.iterrows()
         ]
         return jsonify({"stores": stores})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.get("/api/forecast/<int:store_id>")
