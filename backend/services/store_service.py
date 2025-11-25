@@ -1,20 +1,46 @@
-# services/store_service.py
-from typing import Optional
-import pandas as pd
-
-from model_utils import get_store_list_from_features
-
-_store_list_cache: Optional[pd.DataFrame] = None
+# backend/services/store_service.py
+from typing import List, Dict
+from model_utils import get_latest_features_df
 
 
-def get_store_list() -> pd.DataFrame:
+def get_store_list() -> List[Dict]:
     """
-    Return store list as a DataFrame, cached in memory.
-    """
-    global _store_list_cache
-    if _store_list_cache is not None:
-        return _store_list_cache
+    Build a list of stores from the latest features DataFrame.
 
-    df = get_store_list_from_features()
-    _store_list_cache = df
-    return _store_list_cache
+    Returns
+    -------
+    List[Dict]
+        Each dict: {"value": store_id, "label": "1234 - Store Name"}
+    """
+    df = get_latest_features_df()   # <-- this is a pandas DataFrame
+
+    stores = []
+    seen_ids = set()
+
+    # Adjust these column names if yours are slightly different
+    STORE_ID_COL = "Store Number"
+    STORE_NAME_COL = "Store Name"
+
+    for _, row in df.iterrows():
+        store_id = int(row[STORE_ID_COL])
+
+        # skip duplicates (multiple rows per store)
+        if store_id in seen_ids:
+            continue
+        seen_ids.add(store_id)
+
+        store_name = str(row.get(STORE_NAME_COL, "")).strip()
+        if store_name:
+            label = f"{store_id} - {store_name}"
+        else:
+            label = str(store_id)
+
+        stores.append({
+            "value": store_id,
+            "label": label,
+        })
+
+    # Optional: sort alphabetically by label
+    stores.sort(key=lambda s: s["label"])
+
+    return stores
