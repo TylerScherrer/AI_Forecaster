@@ -92,3 +92,54 @@ def get_store_list_from_features():
     # Sort (not required, but nice for UI consistency)
     stores.sort(key=lambda s: s["store_id"])
     return stores
+
+def build_feature_vector_for_store(store_id: int):
+    """
+    Given a store_id, build a single-row feature DataFrame for the model.
+
+    Returns:
+        X : pandas.DataFrame with shape (1, n_features)
+    """
+    # Use the "latest per store" features table
+    df = get_latest_features_df()
+
+    if "Store Number" not in df.columns:
+        raise KeyError("Column 'Store Number' not found in latest features dataframe")
+
+    row = df[df["Store Number"] == store_id]
+
+    if row.empty:
+        raise ValueError(f"No feature row found for store_id={store_id}")
+
+    # Figure out which columns are features
+    config = get_model_config()
+
+    # Try to read an explicit list of feature columns from config, if present
+    feature_cols = (
+        config.get("feature_columns")
+        or config.get("X_columns")
+        or None
+    )
+
+    if feature_cols is None:
+        # Fallback: use all numeric columns except obvious ID / target / date columns
+        exclude_cols = {
+            "Store Number",
+            "Store Name",
+            "Sale (Dollars)",
+            "MonthStart",
+        }
+        feature_cols = [
+            c for c in row.columns
+            if c not in exclude_cols and pd.api.types.is_numeric_dtype(row[c])
+        ]
+
+    # Ensure the columns exist
+    missing = [c for c in feature_cols if c not in row.columns]
+    if missing:
+        raise KeyError(f"Feature columns missing from dataframe: {missing}")
+
+    # Slice to just feature columns; keep as DataFrame with 1 row
+    X = row[feature_cols].astype(float)
+
+    return X
