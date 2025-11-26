@@ -20,6 +20,19 @@ _features_latest_cache = None
 _features_all_cache = None
 _model_config_cache = None
 
+STORE_METADATA_PATH = os.path.join(MODELS_DIR, "store_metadata.json")
+_store_metadata_cache = None
+
+def get_store_metadata():
+    global _store_metadata_cache
+    if _store_metadata_cache is None:
+        try:
+            with open(STORE_METADATA_PATH, "r") as f:
+                _store_metadata_cache = json.load(f)
+        except FileNotFoundError:
+            _store_metadata_cache = {}
+    return _store_metadata_cache
+
 
 def get_model():
     global _model_cache
@@ -57,41 +70,51 @@ def get_store_list_from_features():
     Returns a list of dicts like:
         {
             "store_id": 1234,
-            "label": "1234 - Some Store Name",  # or just "1234" if no name column
+            "label": "Some Store Name (#1234)" or "Store #1234",
             "value": 1234
         }
-
-    This is what /api/stores can send back to the frontend.
     """
     df = get_latest_features_df()
 
     if "Store Number" not in df.columns:
-        # Fail loudly if the features file doesn't look like we expect
         raise KeyError("Column 'Store Number' not found in features_latest_per_store_v3.pkl")
 
-    has_name_col = "Store Name" in df.columns
+    # Try to find any reasonable store-name column in the features dataframe
+    possible_name_cols = [
+        "Store Name",
+        "store_name",
+        "Store_Name",
+        "STORE_NAME",
+    ]
+    name_col = None
+    for cand in possible_name_cols:
+        if cand in df.columns:
+            name_col = cand
+            break
 
     stores = []
-    # Group by store so we only emit each store once
+
+    # Group by store number so we only emit each store once
     for store_id, group in df.groupby("Store Number"):
-        # If we have a Store Name column, use it for nicer labels
-        if has_name_col:
-            store_name = group["Store Name"].iloc[0]
-            label = f"{store_id} - {store_name}"
+        sid = int(store_id)
+
+        if name_col is not None:
+            store_name = str(group[name_col].iloc[0])
+            label = f"{store_name} (#${sid})".replace("#$", "#")  # little safety hack
         else:
-            label = str(store_id)
+            label = f"Store #{sid}"
 
         stores.append(
             {
-                "store_id": int(store_id),
+                "store_id": sid,
                 "label": label,
-                "value": int(store_id),
+                "value": sid,
             }
         )
 
-    # Sort (not required, but nice for UI consistency)
     stores.sort(key=lambda s: s["store_id"])
     return stores
+
 
 def build_feature_vector_for_store(store_id: int):
     """

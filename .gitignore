@@ -8,6 +8,7 @@ frontend/node_modules/
 # Large data files
 backend/data/Iowa_Liquor_Sales.csv
 backend/data/*.csv
+!store_lookup.csv
 
 
 
