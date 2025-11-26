@@ -16,4 +16,6 @@ backend/data/*.csv
 *.pyc
 
 # Env files
-*.env
+.env*
+!.env.production
+
