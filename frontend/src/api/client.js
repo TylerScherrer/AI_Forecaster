@@ -22,3 +22,19 @@ export async function apiGetForecast(storeId) {
   if (!res.ok) throw new Error(`Forecast failed: HTTP ${res.status}`);
   return res.json(); // { store_id, prediction }
 }
+// src/api/client.js
+export async function apiExplainForecast({ storeId, prediction }) {
+  const res = await fetch(`${API_BASE}/explain_forecast`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      store_id: storeId,
+      prediction,
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Explain forecast failed: HTTP ${res.status}`);
+  return res.json();
+}
+
+

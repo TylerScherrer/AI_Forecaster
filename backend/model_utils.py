@@ -14,6 +14,7 @@ MODEL_PATH = os.path.join(MODELS_DIR, "xgb_all_stable_v3.pkl")
 FEATURES_LATEST_PATH = os.path.join(MODELS_DIR, "features_latest_per_store_v3.pkl")
 FEATURES_ALL_PATH = os.path.join(MODELS_DIR, "features_all_stable_v3.pkl")
 CONFIG_PATH = os.path.join(MODELS_DIR, "model_config_v3.json")
+HISTORY_PATH = os.path.join(MODELS_DIR, "store_month_history_v1.pkl")
 
 _model_cache = None
 _features_latest_cache = None
@@ -166,3 +167,32 @@ def build_feature_vector_for_store(store_id: int):
     X = row[feature_cols].astype(float)
 
     return X
+
+# Cached store–month history dataframe
+_history_df_cache = None
+
+def get_history_df() -> pd.DataFrame:
+    """
+    Load the full store-month history table:
+    one row per (Store Number, MonthStart) with Sale (Dollars).
+
+    Uses model_config to pick the right column names.
+    """
+    global _history_df_cache
+    if _history_df_cache is None:
+        df = pd.read_pickle(HISTORY_PATH)
+
+        cfg = get_model_config()
+        date_col = cfg["date_col"]   # e.g. "MonthStart"
+        store_col = cfg["store_col"] # e.g. "Store Number"
+
+        # Ensure proper dtypes
+        if not pd.api.types.is_datetime64_any_dtype(df[date_col]):
+            df[date_col] = pd.to_datetime(df[date_col])
+
+        # Store IDs as int
+        df[store_col] = df[store_col].astype(int)
+
+        _history_df_cache = df
+
+    return _history_df_cache

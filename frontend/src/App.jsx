@@ -1,7 +1,13 @@
 // src/App.jsx
 import { useEffect, useState } from "react";
 
-import { apiHealth, apiGetStores, apiGetForecast } from "./api/client";
+import {
+  apiHealth,
+  apiGetStores,
+  apiGetForecast,
+  apiExplainForecast, // ✅ NEW
+} from "./api/client";
+
 import StatusBar from "./components/StatusBar";
 import ErrorBox from "./components/ErrorBox";
 import StoreList from "./components/StoreList";
@@ -12,12 +18,20 @@ import "./App.css";
 export default function App() {
   const [status, setStatus] = useState("Checking backend…");
   const [error, setError] = useState("");
+
   const [stores, setStores] = useState([]);
   const [selectedStore, setSelectedStore] = useState(null);
   const [prediction, setPrediction] = useState(null);
   const [loadingForecast, setLoadingForecast] = useState(false);
 
+  // LLM-related state
+  const [explanation, setExplanation] = useState(null);
+  const [loadingExplanation, setLoadingExplanation] = useState(false);
+  const [explanationError, setExplanationError] = useState("");
+
+  // -------------------------------
   // Health check
+  // -------------------------------
   useEffect(() => {
     async function checkBackend() {
       try {
@@ -31,7 +45,9 @@ export default function App() {
     checkBackend();
   }, []);
 
+  // -------------------------------
   // Load store list
+  // -------------------------------
   useEffect(() => {
     async function loadStores() {
       try {
@@ -44,17 +60,44 @@ export default function App() {
     loadStores();
   }, []);
 
-  // Handle store click
+  // -------------------------------
+  // When a store is selected
+  // -------------------------------
   async function handleSelectStore(store) {
     setSelectedStore(store);
+
+    // reset previous results
     setPrediction(null);
+    setExplanation(null);
+
     setLoadingForecast(true);
+    setLoadingExplanation(false);
+
+    // clear previous errors
     setError("");
+    setExplanationError("");
 
     try {
+      // 1) Get numeric forecast
       const data = await apiGetForecast(store.value);
       setPrediction(data.prediction);
+
+      // 2) Ask LLM to explain (don’t block forecast if this fails)
+      setLoadingExplanation(true);
+      try {
+        const explain = await apiExplainForecast({
+          storeId: store.value,
+          prediction: data.prediction,
+        });
+        setExplanation(explain.explanation);
+      } catch (llmErr) {
+        // Only mark LLM-specific error here
+        setExplanationError(String(llmErr));
+      } finally {
+        setLoadingExplanation(false);
+      }
     } catch (err) {
+      // Hard failure getting prediction
       setError(String(err));
     } finally {
       setLoadingForecast(false);
@@ -74,6 +117,7 @@ export default function App() {
       </header>
 
       <main className="app-main">
+        {/* Global error for hard failures */}
         <ErrorBox error={error} />
 
         <div className="layout-grid">
@@ -87,6 +131,9 @@ export default function App() {
             selectedStore={selectedStore}
             prediction={prediction}
             loadingForecast={loadingForecast}
+            explanation={explanation}
+            loadingExplanation={loadingExplanation}
+            explanationError={explanationError}
           />
         </div>
       </main>
