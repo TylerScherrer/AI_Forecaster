@@ -1,0 +1,41 @@
+name: Build and deploy Python app to Azure Web App - Backend
+
+on:
+  push:
+    branches:
+      - main      # change if you use a different branch
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Install dependencies for the backend (requirements.txt is in backend/)
+      - name: Create venv and install dependencies
+        working-directory: ./backend
+        run: |
+          python -m venv antenv
+          source antenv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      # Create a zip of the backend to deploy
+      - name: Archive backend for deployment
+        working-directory: ./backend
+        run: |
+          zip -r ../backend.zip .
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: AI-Forecaster                       # your App Service name
+          slot-name: Production
+          package: ./backend.zip
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
