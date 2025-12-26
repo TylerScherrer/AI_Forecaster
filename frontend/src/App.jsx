@@ -5,13 +5,14 @@ import {
   apiHealth,
   apiGetStores,
   apiGetForecast,
-  apiExplainForecast, // ✅ NEW
+  apiExplainForecast,
 } from "./api/client";
 
 import StatusBar from "./components/StatusBar";
 import ErrorBox from "./components/ErrorBox";
 import StoreList from "./components/StoreList";
 import ForecastPanel from "./components/ForecastPanel";
+import ForecastChart from "./components/ForecastChart";
 
 import "./App.css";
 
@@ -23,6 +24,11 @@ export default function App() {
   const [selectedStore, setSelectedStore] = useState(null);
   const [prediction, setPrediction] = useState(null);
   const [loadingForecast, setLoadingForecast] = useState(false);
+
+  // chart-related state
+  const [history, setHistory] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [nextPeriodLabel, setNextPeriodLabel] = useState("Next"); // ⭐ NEW
 
   // LLM-related state
   const [explanation, setExplanation] = useState(null);
@@ -69,6 +75,9 @@ export default function App() {
     // reset previous results
     setPrediction(null);
     setExplanation(null);
+    setHistory([]);
+    setStats(null);
+    setNextPeriodLabel("Next"); // ⭐ reset
 
     setLoadingForecast(true);
     setLoadingExplanation(false);
@@ -78,9 +87,15 @@ export default function App() {
     setExplanationError("");
 
     try {
-      // 1) Get numeric forecast
+      // 1) Get forecast + history + stats (+ next_period_label)
       const data = await apiGetForecast(store.value);
+      // data should look like:
+      // { store_id, prediction, history, stats, next_period_label }
+
       setPrediction(data.prediction);
+      setHistory(data.history || []);
+      setStats(data.stats || null);
+      setNextPeriodLabel(data.next_period_label || "Next"); // ⭐ NEW
 
       // 2) Ask LLM to explain (don’t block forecast if this fails)
       setLoadingExplanation(true);
@@ -88,16 +103,16 @@ export default function App() {
         const explain = await apiExplainForecast({
           storeId: store.value,
           prediction: data.prediction,
+          history: data.history || [],
+          stats: data.stats || {},
         });
         setExplanation(explain.explanation);
       } catch (llmErr) {
-        // Only mark LLM-specific error here
         setExplanationError(String(llmErr));
       } finally {
         setLoadingExplanation(false);
       }
     } catch (err) {
-      // Hard failure getting prediction
       setError(String(err));
     } finally {
       setLoadingForecast(false);
@@ -117,16 +132,17 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        {/* Global error for hard failures */}
         <ErrorBox error={error} />
 
         <div className="layout-grid">
+          {/* LEFT: store list */}
           <StoreList
             stores={stores}
             selectedStore={selectedStore}
             onSelectStore={handleSelectStore}
           />
 
+          {/* MIDDLE: forecast + AI Insight */}
           <ForecastPanel
             selectedStore={selectedStore}
             prediction={prediction}
@@ -134,6 +150,14 @@ export default function App() {
             explanation={explanation}
             loadingExplanation={loadingExplanation}
             explanationError={explanationError}
+          />
+
+          {/* RIGHT: forecasting graph */}
+          <ForecastChart
+            history={history}
+            prediction={prediction}
+            loading={loadingForecast}
+            nextLabel={nextPeriodLabel}    // ⭐ pass label down
           />
         </div>
       </main>

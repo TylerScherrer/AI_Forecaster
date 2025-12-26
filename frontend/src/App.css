@@ -91,11 +91,13 @@ body {
 
 /* Grid layout */
 
+/* Example – adjust numbers to taste */
 .layout-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: 280px 1.2fr 1.2fr; /* left list, middle panel, right chart */
+  gap: 1.5rem;
 }
+
 
 @media (max-width: 800px) {
   .layout-grid {

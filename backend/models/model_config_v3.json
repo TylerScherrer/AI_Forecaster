@@ -1,7 +1,8 @@
 {
   "segment": "all",
   "target_col": "Sale (Dollars)",
-  "date_col": "MonthStart",
+  "date_col": "InvoiceMonth",
+
   "store_col": "Store Number",
   "exclude_features": [
     "baseline_roll3",

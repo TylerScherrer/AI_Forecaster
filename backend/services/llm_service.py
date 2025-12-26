@@ -1,65 +1,114 @@
 # backend/services/llm_service.py
-from typing import Dict, Any
+from __future__ import annotations
+
+from typing import Dict, Any, List, Optional
+
+
+class ExplanationError(Exception):
+    """Raised when a forecast explanation cannot be generated from the given context."""
+    pass
 
 
 def explain_forecast(context: Dict[str, Any]) -> str:
     """
     Create a clear, manager-friendly explanation using numeric context.
+
     Sections:
     - Summary (with data range)
     - Key numbers (including recent months if available)
     - Suggested actions
-    """
-    store_id = context.get("store_id")
-    prediction = context.get("prediction")
-    stats = context.get("stats", {})
-    history = context.get("history", []) or []
 
-    last_actual = stats.get("last_actual")
-    avg_3 = stats.get("avg_last_3")
-    avg_6 = stats.get("avg_last_6")
-    avg_12 = stats.get("avg_last_12")
-    trend = stats.get("trend_direction")
-    volatility = stats.get("volatility")
+    :param context: Dictionary with keys like:
+        - "store_id": int
+        - "prediction": float
+        - "stats": dict with numeric summary fields
+        - "history": list of {"date": str, "sales": float}
+    :return: Multi-line explanation string.
+    :raises ExplanationError: If required fields are missing or invalid.
+    """
+    # --------- Basic validation ----------
+    store_id: Optional[int] = context.get("store_id")
+    prediction: Any = context.get("prediction")
+
+    if store_id is None:
+        raise ExplanationError("Missing required field 'store_id' in context.")
+
+    if prediction is None:
+        raise ExplanationError(
+            f"Missing required field 'prediction' in context for store_id={store_id}."
+        )
+
+    stats: Dict[str, Any] = context.get("stats", {}) or {}
+    history_raw: Any = context.get("history", []) or []
+
+    # Ensure history is a list for downstream logic
+    history: List[Dict[str, Any]]
+    if isinstance(history_raw, list):
+        history = [row for row in history_raw if isinstance(row, dict)]
+    else:
+        # If it's something weird, treat as no history rather than exploding
+        history = []
+
+    last_actual: Optional[float] = stats.get("last_actual")
+    avg_3: Optional[float] = stats.get("avg_last_3")
+    avg_6: Optional[float] = stats.get("avg_last_6")
+    avg_12: Optional[float] = stats.get("avg_last_12")
+    trend: Optional[str] = stats.get("trend_direction")
+    volatility: Optional[str] = stats.get("volatility")
 
     # Helper to format dollars safely
-    def fmt(v):
-        if v is None:
+    def fmt(value: Any) -> str:
+        if value is None:
             return "N/A"
         try:
-            return f"${float(v):,.2f}"
-        except Exception:
-            return str(v)
+            return f"${float(value):,.2f}"
+        except (TypeError, ValueError):
+            return str(value)
 
     # Helper to get a nice date label (YYYY-MM)
-    def fmt_date(d: str) -> str:
-        if not d:
+    def fmt_date(raw_date: Any) -> str:
+        if not raw_date:
             return "N/A"
-        # take just YYYY-MM if it's an ISO string
-        return d[:7]
+        try:
+            s = str(raw_date)
+        except Exception:
+            return "N/A"
+        # take just YYYY-MM if it's an ISO-like string
+        return s[:7]
 
-    lines: list[str] = []
+    lines: List[str] = []
 
     # =========================
     # 1) SUMMARY
     # =========================
     neg_forecast = False
-    if isinstance(prediction, (int, float)):
-        if prediction < 0:
+
+    try:
+        numeric_prediction: Optional[float] = float(prediction)  # may raise
+    except (TypeError, ValueError):
+        numeric_prediction = None
+
+    if numeric_prediction is None:
+        lines.append(
+            f"For store {store_id}, a forecast is available, but the exact value "
+            "could not be interpreted as a number."
+        )
+    else:
+        if numeric_prediction < 0:
             neg_forecast = True
             lines.append(
-                f"For store {store_id}, the model produced a negative forecast "
-                f"({fmt(prediction)}). In practice, this means the model expects "
-                "very low sales and is uncertain. Treat this as roughly $0 in sales."
+                (
+                    f"For store {store_id}, the model produced a negative forecast "
+                    f"({fmt(numeric_prediction)}). In practice, this means the model "
+                    "expects very low sales and is uncertain. Treat this as roughly "
+                    "$0 in sales."
+                )
             )
         else:
             lines.append(
-                f"For store {store_id}, the forecast for the next period is {fmt(prediction)} in sales."
+                f"For store {store_id}, the forecast for the next period is "
+                f"{fmt(numeric_prediction)} in sales."
             )
-    else:
-        lines.append(
-            f"For store {store_id}, a forecast is available, but the exact value could not be formatted."
-        )
 
     # Describe how much history we actually have
     if history:
@@ -67,33 +116,44 @@ def explain_forecast(context: Dict[str, Any]) -> str:
         start_date = fmt_date(history[0].get("date"))
         end_date = fmt_date(history[-1].get("date"))
         lines.append(
-            f"The model is using {n_months} month(s) of history from {start_date} through {end_date}."
+            f"The model is using {n_months} month(s) of history from "
+            f"{start_date} through {end_date}."
         )
     else:
         lines.append(
-            "Recent history is limited or unavailable, so it is harder to compare this forecast to past performance."
+            "Recent history is limited or unavailable, so it is harder to compare "
+            "this forecast to past performance."
         )
 
     # Compare to 6-month average when possible
-    if isinstance(prediction, (int, float)) and avg_6 not in (None, 0):
-        diff = prediction - avg_6
-        pct = diff / avg_6
+    if numeric_prediction is not None and avg_6 not in (None, 0):
+        try:
+            diff = numeric_prediction - float(avg_6)
+            pct = diff / float(avg_6)
+        except (TypeError, ValueError, ZeroDivisionError):
+            pct = None
 
-        if pct > 0.20:
-            lines.append("This is much higher than the store's recent 6-month average.")
-        elif pct > 0.05:
-            lines.append("This is slightly higher than the store's recent 6-month average.")
-        elif pct < -0.20:
-            lines.append("This is much lower than the store's recent 6-month average.")
-        elif pct < -0.05:
-            lines.append("This is slightly lower than the store's recent 6-month average.")
-        else:
-            lines.append("This is roughly in line with what the store has done over the last 6 months.")
-    elif last_actual is not None:
-        # If we don't have a 6-month avg but we DO have a last month, relate to that
-        if isinstance(prediction, (int, float)) and last_actual != 0:
-            diff = prediction - last_actual
-            pct = diff / last_actual
+        if pct is not None:
+            if pct > 0.20:
+                lines.append("This is much higher than the store's recent 6-month average.")
+            elif pct > 0.05:
+                lines.append("This is slightly higher than the store's recent 6-month average.")
+            elif pct < -0.20:
+                lines.append("This is much lower than the store's recent 6-month average.")
+            elif pct < -0.05:
+                lines.append("This is slightly lower than the store's recent 6-month average.")
+            else:
+                lines.append(
+                    "This is roughly in line with what the store has done over the last 6 months."
+                )
+    elif last_actual is not None and numeric_prediction is not None:
+        try:
+            diff = numeric_prediction - float(last_actual)
+            pct = diff / float(last_actual) if float(last_actual) != 0 else None
+        except (TypeError, ValueError, ZeroDivisionError):
+            pct = None
+
+        if pct is not None:
             if abs(pct) < 0.05:
                 lines.append("This forecast is very close to last month's sales.")
             elif pct > 0:
@@ -125,8 +185,8 @@ def explain_forecast(context: Dict[str, Any]) -> str:
         lines.append(f"- Average of last 6 months: {fmt(avg_6)}")
     if avg_12 is not None:
         lines.append(f"- Average of last 12 months: {fmt(avg_12)}")
-    if isinstance(prediction, (int, float)):
-        lines.append(f"- Forecast for next period: {fmt(prediction)}")
+    if numeric_prediction is not None:
+        lines.append(f"- Forecast for next period: {fmt(numeric_prediction)}")
 
     # If we have history, show the last few months explicitly
     if history:
@@ -144,26 +204,55 @@ def explain_forecast(context: Dict[str, Any]) -> str:
     lines.append("")
     lines.append("Suggested actions:")
 
-    if neg_forecast:
-        lines.append("- Treat this as a near-zero month and investigate why sales might be so weak.")
+    if numeric_prediction is None:
+        lines.append(
+            "- Because the numeric forecast could not be interpreted, rely more on "
+            "recent history and local knowledge when planning orders."
+        )
+    elif neg_forecast:
+        lines.append(
+            "- Treat this as a near-zero month and investigate why sales might be so weak."
+        )
     else:
-        if isinstance(prediction, (int, float)) and avg_6 not in (None, 0):
-            if prediction > avg_6 * 1.1:
-                lines.append("- Ensure you have enough inventory to support the higher-than-usual forecast.")
-            elif prediction < avg_6 * 0.9:
-                lines.append("- Consider tightening orders if this lower forecast matches what you see locally.")
-            else:
-                lines.append("- Use this forecast as a baseline and adjust for any known events or promotions.")
+        if avg_6 not in (None, 0):
+            try:
+                avg_6_val = float(avg_6)
+                if numeric_prediction > avg_6_val * 1.1:
+                    lines.append(
+                        "- Ensure you have enough inventory to support the higher-than-usual forecast."
+                    )
+                elif numeric_prediction < avg_6_val * 0.9:
+                    lines.append(
+                        "- Consider tightening orders if this lower forecast matches what you see locally."
+                    )
+                else:
+                    lines.append(
+                        "- Use this forecast as a baseline and adjust for any known events or promotions."
+                    )
+            except (TypeError, ValueError):
+                lines.append(
+                    "- Use this forecast together with recent history and your local knowledge."
+                )
         elif last_actual is not None:
-            lines.append("- Compare this forecast directly to last month's sales to set expectations.")
+            lines.append(
+                "- Compare this forecast directly to last month's sales to set expectations."
+            )
 
     if volatility == "high":
-        lines.append("- Because this store is volatile, avoid over-reacting to a single month's forecast.")
+        lines.append(
+            "- Because this store is volatile, avoid over-reacting to a single month's forecast."
+        )
     elif volatility == "medium":
-        lines.append("- Expect some month-to-month noise when comparing actuals to this forecast.")
+        lines.append(
+            "- Expect some month-to-month noise when comparing actuals to this forecast."
+        )
     else:
-        lines.append("- Track actuals against this forecast to see if the store is stabilizing or shifting.")
+        lines.append(
+            "- Track actuals against this forecast to see if the store is stabilizing or shifting."
+        )
 
-    lines.append("- Cross-check this forecast with any upcoming promotions, holidays, or local events.")
+    lines.append(
+        "- Cross-check this forecast with any upcoming promotions, holidays, or local events."
+    )
 
     return "\n".join(lines)

@@ -173,26 +173,47 @@ _history_df_cache = None
 
 def get_history_df() -> pd.DataFrame:
     """
-    Load the full store-month history table:
-    one row per (Store Number, MonthStart) with Sale (Dollars).
+    Load the full store-month history table.
 
-    Uses model_config to pick the right column names.
+    Supports either:
+      - InvoiceMonth
+      - MonthStart
+
+    Normalizes whichever exists into the config's date_col.
     """
     global _history_df_cache
     if _history_df_cache is None:
         df = pd.read_pickle(HISTORY_PATH)
 
         cfg = get_model_config()
-        date_col = cfg["date_col"]   # e.g. "MonthStart"
-        store_col = cfg["store_col"] # e.g. "Store Number"
+        desired_date_col = cfg.get("date_col", "MonthStart")
+        store_col = cfg.get("store_col", "Store Number")
 
-        # Ensure proper dtypes
-        if not pd.api.types.is_datetime64_any_dtype(df[date_col]):
-            df[date_col] = pd.to_datetime(df[date_col])
+        # Detect available date column in the history pickle
+        if desired_date_col not in df.columns:
+            # Fallback candidates
+            candidates = ["InvoiceMonth", "MonthStart"]
+            found = next((c for c in candidates if c in df.columns), None)
+            if found is None:
+                raise KeyError(
+                    f"History file missing date column. Expected '{desired_date_col}' "
+                    f"or one of {candidates}. Found columns: {list(df.columns)}"
+                )
+            # Use the found column as the working date column
+            working_date_col = found
+        else:
+            working_date_col = desired_date_col
 
-        # Store IDs as int
+        # Normalize to monthly timestamp (YYYY-MM-01)
+        df[working_date_col] = pd.to_datetime(df[working_date_col]).dt.to_period("M").dt.to_timestamp()
+
+        # If config expects a different name, copy into that name
+        if working_date_col != desired_date_col:
+            df[desired_date_col] = df[working_date_col]
+
         df[store_col] = df[store_col].astype(int)
 
         _history_df_cache = df
 
     return _history_df_cache
+

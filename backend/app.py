@@ -6,7 +6,7 @@ from config import CORS_ALLOWED_ORIGINS
 from routes.health_routes import health_bp
 from routes.stores_routes import stores_bp
 from routes.forecast_routes import forecast_bp
-from routes.ai_routes import ai_bp  # ✅ make sure this import exists
+from routes.ai_routes import ai_bp 
 
 
 def create_app() -> Flask:
@@ -26,6 +26,6 @@ def create_app() -> Flask:
     app.register_blueprint(health_bp, url_prefix="/api")
     app.register_blueprint(stores_bp, url_prefix="/api")
     app.register_blueprint(forecast_bp, url_prefix="/api")
-    app.register_blueprint(ai_bp, url_prefix="/api")  # ✅ add this
+    app.register_blueprint(ai_bp, url_prefix="/api")  
 
     return app
